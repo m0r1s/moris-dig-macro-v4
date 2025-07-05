@@ -107,7 +107,7 @@ CheckAutoReconnect() {
         pixelColor := PixelGetColor(reconnectX, reconnectY)
         
         if (pixelColor = reconnectColor) {
-            ToolTip("Disconnect detected! Auto reconnecting...", 10, 10)
+            ToolTip("Disconnect detected! Auto reconnecting...", 10, 190)
             SendWebhook("Disconnect detected - Auto reconnecting")
 
             startX := reconnectX
@@ -123,16 +123,14 @@ CheckAutoReconnect() {
 
                 newPixelColor := PixelGetColor(reconnectX, reconnectY)
                 if (newPixelColor != reconnectColor) {
-                    ToolTip("Auto reconnect successful after " . clickCount . " clicks", 10, 10)
+                    ToolTip("Auto reconnect successful after " . clickCount . " clicks", 10, 190)
                     SendWebhook("Auto reconnect successful after " . clickCount . " clicks")
                     SetTimer(() => ToolTip(), -3000)
                     return
                 }
             }
             
-            Sleep 10000
-            universalUi("1l1e1d1d1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1d1d1r1d1d1d1d1d1e2e1r1r1r1l1e1x", 0, 0)
-            Sleep 25000
+            Sleep 35000
 
             Loop 18 {
                 Send "{WheelUp}"
@@ -146,7 +144,7 @@ CheckAutoReconnect() {
             Sleep 600
             Click "Left"
 
-            ToolTip("Auto reconnect completed - " . maxClicks . " clicks attempted", 10, 10)
+            ToolTip("Auto reconnect completed - " . maxClicks . " clicks attempted", 10, 190)
             SendWebhook("Auto reconnect completed - " . maxClicks . " clicks attempted")
             SetTimer(() => ToolTip(), -3000)
         }
@@ -575,10 +573,10 @@ UpdateResolution(*) {
             if (!isFullscreen) {
                 Send("{F11}")
                 Sleep(300)
-                ToolTip("Switched from windowed to fullscreen mode for " . selectedResolution, 0, -30)
+                ToolTip("Switched from windowed to fullscreen mode for " . selectedResolution, 0, -50)
                 SetTimer(() => ToolTip(), -2000)
             } else {
-                ToolTip("Already in fullscreen mode for " . selectedResolution, 0, -30)
+                ToolTip("Already in fullscreen mode for " . selectedResolution, 0, -50)
                 SetTimer(() => ToolTip(), -2000)
             }
             
@@ -702,7 +700,7 @@ CheckAutoSell() {
     if (recoveryCycleCount >= lastAutoSellCycle + 5) {
         lastAutoSellCycle := recoveryCycleCount
         
-        ToolTip("Auto Sell activated!", 10, 10)
+        ToolTip("Auto Sell activated!", 10, 70)
     
         Sleep 500
         Send "g"
@@ -716,7 +714,7 @@ CheckAutoSell() {
         SendInput(uiNavigationKey)
         Send "g"
 
-        ToolTip("Auto Sell completed", 10, 10)
+        ToolTip("Auto Sell completed", 10, 70)
         SetTimer(() => ToolTip(), -3000)
         
         SaveSettings()
@@ -737,7 +735,7 @@ AutoTotemCheck() {
 
         PauseScanRecovery()
         
-        ToolTip("Auto Totem activated!", 10, 10)
+        ToolTip("Auto Totem activated!", 10, 130)
         SendWebhook("Auto Totem activated - Using totem")
 
         Send "5"
@@ -747,7 +745,7 @@ AutoTotemCheck() {
         Send "1"
         Sleep 500
 
-        ToolTip("Auto Totem completed - Resuming recovery", 10, 10)
+        ToolTip("Auto Totem completed - Resuming recovery", 10, 130)
         SetTimer(() => ToolTip(), -3000)
 
         ResumeScanRecovery()
@@ -758,7 +756,7 @@ AutoTotemCheck() {
 
 LoadSettings()
 
-MyGui := Gui("+AlwaysOnTop -Resize -MaximizeBox", "moris dig macro v4")
+MyGui := Gui("+AlwaysOnTop -Resize -MaximizeBox", "moris dig macro v4.1")
 MyGui.MarginX := 10
 MyGui.MarginY := 10
 
@@ -954,15 +952,10 @@ F1::
 
     SaveSettings()
     ApplySettings()
-
-    ToolTip("Focusing on Roblox and checking fullscreen status...", 10, 10)
-    EnsureRobloxFullscreen()
-    Sleep(1000)
     
     ToolTip("Running scroll sequence", 10, 10)
     
     if (recoveryCycleEnabled) {
-        universalUi("1l1e1d1d1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1u1d1d1r1d1d1d1d1d1e2e1r1r1r1l1e1x", 0, 0)
 
         Loop 18 {
             Send "{WheelUp}"
@@ -994,7 +987,7 @@ F1::
         }
 
         if (autoReconnectEnabled) {
-            SetTimer(CheckAutoReconnect, 900000)
+            SetTimer(CheckAutoReconnect, 900000) ; 15 mieutes
             SendWebhook("Started with Auto Reconnect enabled")
         }
     } else {
@@ -1021,7 +1014,11 @@ F3:: {
         MouseGetPos(&mouseX, &mouseY)
         pixelColor := PixelGetColor(mouseX, mouseY)
         A_Clipboard := pixelColor
-        MsgBox pixelColor, "Color Copied" , 1
+        
+        TabCtrl.Value := 2 
+
+        customColorEdit.Text := pixelColor
+
         SetTimer () => TrayTip(), -2000
     } catch as err {
         MsgBox "Error getting color: " err.Message
@@ -1060,14 +1057,14 @@ ScanForColor() {
         if (recoveryActive) {
             recoveryActive := false
             clickLoopActive := false
-            ToolTip("Recovery mode ended - Scrolled down", 10, 10)
+            ToolTip("Recovery mode ended - Scrolled down", 10, 50)
             SetTimer(() => ToolTip(), -2000)
         }
 
         if (stableModeActive) {
             Send "{Right up}"
             stableModeActive := false
-            ToolTip("Stable mode ended - Target found", 10, 10)
+            ToolTip("Stable mode ended - Target found", 10, 50)
             SetTimer(() => ToolTip(), -2000)
         }
 
@@ -1115,7 +1112,7 @@ CheckPixelTimeout() {
         lastPixelFoundTime := A_TickCount
         if (recoveryActive) {
             recoveryActive := false
-            ToolTip("Target pixel found - Recovery cancelled", 10, 10)
+            ToolTip("Target pixel found - Recovery cancelled", 10, 50)
             SetTimer(() => ToolTip(), -2000)
         }
         return
@@ -1146,18 +1143,18 @@ CheckPixelTimeout() {
         lastRecoveryTime := currentTime
 
         if (autoSellEnabled && recoveryCycleCount >= lastAutoSellCycle + 5) {
-            ToolTip("Auto Sell triggered - Pausing before recovery", 10, 10)
+            ToolTip("Auto Sell triggered - Pausing before recovery", 10, 70)
             CheckAutoSell()
             
             Sleep 4000
             
-            ToolTip("Auto Sell completed - Starting recovery", 10, 10)
+            ToolTip("Auto Sell completed - Starting recovery", 10, 70)
             SetTimer(() => ToolTip(), -2000)
         }
 
         SetTimer(ScanForColor, 0)
         
-        ToolTip("Pixel not found - Started recovery #" . recoveryCycleCount . " (" . movementType . ")", 10, 10)
+        ToolTip("Pixel not found - Started recovery #" . recoveryCycleCount . " (" . movementType . ")", 10, 50)
         
         SafeMoveRelative(0.5, 0.5)
         Send "{WheelUp}"
@@ -1178,7 +1175,7 @@ CheckPixelTimeout() {
             SetTimer(ScanForColor, followInterval)
         }
         
-        ToolTip("Recovery completed - Scanning restarted", 10, 10)
+        ToolTip("Recovery completed - Scanning restarted", 10, 50)
         SetTimer(() => ToolTip(), -2000)
         recoveryActive := false
     }
@@ -1203,7 +1200,7 @@ StableModeRecovery() {
             Send "{Right up}"
             SetTimer(SpamLeftClick, 0)
             stableModeActive := false
-            ToolTip("Stable mode ended - Target found", 10, 10)
+            ToolTip("Stable mode ended - Target found", 10, 50)
             SetTimer(() => ToolTip(), -2000)
             break
         }
@@ -1290,7 +1287,7 @@ PauseScanRecovery() {
 
     SetTimer(CheckPixelTimeout, 0)
     
-    ToolTip("Recovery paused for totem placement", 10, 10)
+    ToolTip("Recovery paused for totem placement", 10, 150)
 }
 
 ResumeScanRecovery() {
@@ -1304,79 +1301,7 @@ ResumeScanRecovery() {
         global lastPixelFoundTime
         lastPixelFoundTime := A_TickCount
         
-        ToolTip("Recovery resumed after totem placement", 10, 10)
+        ToolTip("Recovery resumed after totem placement", 10, 150)
         SetTimer(() => ToolTip(), -2000)
-    }
-}
-
-EnsureRobloxFullscreen() {
-    robloxWindow := 0
-
-    windowTitles := [
-        "ahk_exe RobloxPlayerBeta.exe",
-        "ahk_class WINDOWSCLIENT",
-        "Roblox",
-        "ahk_exe RobloxPlayerLauncher.exe"
-    ]
-    
-    for title in windowTitles {
-        robloxWindow := WinExist(title)
-        if (robloxWindow) {
-            break
-        }
-    }
-
-    if (!robloxWindow) {
-        activeWindow := WinGetTitle("A")
-        if (InStr(activeWindow, "Roblox") || WinGetProcessName("A") = "RobloxPlayerBeta.exe") {
-            robloxWindow := WinExist("A")
-        }
-    }
-    
-    if (robloxWindow) {
-        windowTitle := WinGetTitle(robloxWindow)
-        processName := WinGetProcessName(robloxWindow)
-
-        if (InStr(processName, "Roblox") || InStr(windowTitle, "Roblox")) {
-            WinActivate(robloxWindow)
-            WinWaitActive(robloxWindow, , 3)
-            Sleep(500)
-
-            WinGetPos(&winX, &winY, &winWidth, &winHeight, robloxWindow)
-
-            MonitorGet(1, &monLeft, &monTop, &monRight, &monBottom)
-            monWidth := monRight - monLeft
-            monHeight := monBottom - monTop
-
-            isTrueFullscreen := (winX = 0 && winY = 0 && winWidth = monWidth && winHeight = monHeight)
-
-            isFullscreen := isTrueFullscreen
-
-            if (!isFullscreen) {
-                Send("{F11}")
-                Sleep(500)
-
-                wasWindowedFullscreen := (winWidth >= monWidth - 20 && winHeight >= monHeight - 50)
-                if (wasWindowedFullscreen) {
-                    ToolTip("Switched from windowed fullscreen to true fullscreen", 10, 10)
-                } else {
-                    ToolTip("Switched Roblox to fullscreen mode", 10, 10)
-                }
-                SetTimer(() => ToolTip(), -2000)
-                return true
-            } else {
-                ToolTip("Roblox already in true fullscreen mode", 10, 10)
-                SetTimer(() => ToolTip(), -1500)
-                return false
-            }
-        } else {
-            ToolTip("Window found but doesn't appear to be Roblox: " . processName, 10, 10)
-            SetTimer(() => ToolTip(), -3000)
-            return false
-        }
-    } else {
-        ToolTip("Roblox window not found - Please ensure Roblox is running", 10, 10)
-        SetTimer(() => ToolTip(), -3000)
-        return false
     }
 }
