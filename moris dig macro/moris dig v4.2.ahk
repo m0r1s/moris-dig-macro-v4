@@ -15,6 +15,8 @@ webhookURL := ""
 uiNavigationKey := "\"
 movementType := "Fast Mode"
 donationAmount := "10"
+alwaysOnTop := true
+
 donationLinks := Map(
     "10", "https://www.roblox.com/catalog/13790965350/Donation-10",
     "50", "https://www.roblox.com/catalog/13790067716/Donation-50",
@@ -27,6 +29,9 @@ autoTotemEnabled := false
 lastAutoTotemTime := 0
 autoReconnectEnabled := false
 reconnectColor := 0x232527
+
+lastScanTime := 0
+failsafeEnabled := false
 
 defaultClickDelay := 5
 defaultClickScanRadius := 15
@@ -88,6 +93,35 @@ SendWebhook(message) {
         http.Send(json)
     } catch {
 
+    }
+}
+
+CheckFailsafe() {
+    global lastScanTime, failsafeEnabled, scanning
+    
+    if (!failsafeEnabled || !scanning) {
+        return
+    }
+    
+    currentTime := A_TickCount
+    timeSinceLastScan := currentTime - lastScanTime
+
+    if (timeSinceLastScan >= 60000) {
+        ToolTip("Failsafe triggered! Executing recovery sequence...", 10, 210)
+        SendWebhook("Failsafe triggered - No scan activity detected")
+
+        Send "{4}"
+        Sleep(500)
+        Send "{1}"
+        Sleep(500)
+        Send "{Space}"
+        Sleep(500)
+
+        lastScanTime := A_TickCount
+        
+        ToolTip("Failsafe sequence completed - Scan timer reset", 10, 210)
+        SetTimer(() => ToolTip(), -3000)
+        SendWebhook("Failsafe sequence completed - Continuing operation")
     }
 }
 
@@ -157,6 +191,7 @@ LoadSettings() {
     global recoveryCycleEnabled, terrainColors, defaultTerrainColors, recoveryCycleCount, autoSellEnabled, lastAutoSellCycle
     global webhookURL, uiNavigationKey, lastRecoveryTime, pixelFoundAfterRecovery, successfulCycles, unsuccessfulCycles
     global selectedResolution, movementType, autoTotemEnabled, lastAutoTotemTime, autoReconnectEnabled, donationAmount
+    global alwaysOnTop
 
     clickDelay := 5
     clickScanRadius := 15
@@ -180,6 +215,7 @@ LoadSettings() {
     lastAutoTotemTime := 0
     autoReconnectEnabled := false
     donationAmount := "10"
+    alwaysOnTop := true
 
     terrainColors := Map()
 
@@ -202,6 +238,7 @@ LoadSettings() {
         lastAutoTotemTime := IniRead(settingsFile, "Settings", "LastAutoTotemTime", lastAutoTotemTime)
         autoReconnectEnabled := IniRead(settingsFile, "Settings", "AutoReconnectEnabled", autoReconnectEnabled)
         donationAmount := IniRead(settingsFile, "Settings", "DonationAmount", donationAmount)
+        alwaysOnTop := IniRead(settingsFile, "Settings", "AlwaysOnTop", alwaysOnTop)
         
         LoadAllTerrains()
     }
@@ -268,7 +305,7 @@ SaveSettings() {
     global settingsFile, clickDelay, clickScanRadius, clickCooldown, followInterval, spinDelay, terrainDropdown
     global recoveryCycleEnabled, recoveryCycleCount, autoSellEnabled, lastAutoSellCycle, webhookURL, uiNavigationKey
     global selectedResolution, resolutionDropdown, movementType, movementTypeDropdown, autoTotemEnabled, lastAutoTotemTime
-    global autoReconnectEnabled, donationAmount, donationDropdown
+    global autoReconnectEnabled, donationAmount, donationDropdown, alwaysOnTop
 
     currentClickDelay := Integer(clickDelayEdit.Value)
     currentScanRadius := Integer(scanRadiusEdit.Value)
@@ -285,6 +322,7 @@ SaveSettings() {
     currentWebhookURL := guiValues.WebhookURL
     currentUIKey := FormatUIKey(guiValues.UIKey)
     currentAutoTotemToggle := guiValues.AutoTotemToggle
+    currentAlwaysOnTop := guiValues.AlwaysOnTopToggle
 
     IniWrite(currentClickDelay, settingsFile, "Settings", "ClickDelay")
     IniWrite(currentScanRadius, settingsFile, "Settings", "ScanRadius")
@@ -303,6 +341,7 @@ SaveSettings() {
     IniWrite(currentAutoTotemToggle, settingsFile, "Settings", "AutoTotemEnabled")
     IniWrite(lastAutoTotemTime, settingsFile, "Settings", "LastAutoTotemTime")
     IniWrite(currentDonationAmount, settingsFile, "Settings", "DonationAmount")
+    IniWrite(currentAlwaysOnTop, settingsFile, "Settings", "AlwaysOnTop")
 
     autoReconnectEnabled := currentRecoveryToggle
     IniWrite(autoReconnectEnabled, settingsFile, "Settings", "AutoReconnectEnabled")
@@ -313,6 +352,7 @@ SaveSettings() {
     movementType := currentMovementType
     autoTotemEnabled := currentAutoTotemToggle
     donationAmount := currentDonationAmount
+    alwaysOnTop := currentAlwaysOnTop 
 
     SaveAllTerrains()
 }
@@ -522,74 +562,10 @@ UpdateResolution(*) {
     selectedResolution := resolutionDropdown.Text
     CalculateCoordinates()
 
-    if (oldResolution = selectedResolution) {
-        return
-    }
-
-    robloxWindow := 0
-
-    windowTitles := [
-        "ahk_exe RobloxPlayerBeta.exe",
-        "ahk_class WINDOWSCLIENT",
-        "Roblox",
-        "ahk_exe RobloxPlayerLauncher.exe"
-    ]
+    ForceFullscreenMode()
     
-    for title in windowTitles {
-        robloxWindow := WinExist(title)
-        if (robloxWindow) {
-            break
-        }
-    }
-
-    if (!robloxWindow) {
-        activeWindow := WinGetTitle("A")
-        if (InStr(activeWindow, "Roblox") || WinGetProcessName("A") = "RobloxPlayerBeta.exe") {
-            robloxWindow := WinExist("A")
-        }
-    }
-    
-    if (robloxWindow) {
-        windowTitle := WinGetTitle(robloxWindow)
-        processName := WinGetProcessName(robloxWindow)
-
-        if (InStr(processName, "Roblox") || InStr(windowTitle, "Roblox")) {
-
-            WinActivate(robloxWindow)
-            Sleep(500)
-
-            WinGetPos(&winX, &winY, &winWidth, &winHeight, robloxWindow)
-
-            MonitorGet(1, &monLeft, &monTop, &monRight, &monBottom)
-            monWidth := monRight - monLeft
-            monHeight := monBottom - monTop
-
-            isFullscreen := (Abs(winWidth - monWidth) <= 10 && Abs(winHeight - monHeight) <= 10)
-
-            if (!isFullscreen) {
-                isFullscreen := (winX <= 5 && winY <= 5 && winWidth >= monWidth - 20 && winHeight >= monHeight - 50)
-            }
-
-            if (!isFullscreen) {
-                Send("{F11}")
-                Sleep(300)
-                ToolTip("Switched from windowed to fullscreen mode for " . selectedResolution, 0, -50)
-                SetTimer(() => ToolTip(), -2000)
-            } else {
-                ToolTip("Already in fullscreen mode for " . selectedResolution, 0, -50)
-                SetTimer(() => ToolTip(), -2000)
-            }
-            
-            ToolTip("Resolution changed to " . selectedResolution, 0, -30)
-            SetTimer(() => ToolTip(), -3000)
-        } else {
-            ToolTip("Window found but doesn't appear to be Roblox: " . processName, 0, -30)
-            SetTimer(() => ToolTip(), -3000)
-        }
-    } else {
-        ToolTip("Roblox window not found - Please ensure Roblox is running and try activating it first", 0, -30)
-        SetTimer(() => ToolTip(), -3000)
-    }
+    ToolTip("Resolution changed to " . selectedResolution, 0, -30)
+    SetTimer(() => ToolTip(), -3000)
 }
 
 UpdateMovementType(*) {
@@ -603,6 +579,22 @@ UpdateDonationAmount(*) {
     global donationAmount, donationDropdown
     donationAmount := donationDropdown.Text
     ToolTip("Donation amount changed to " . donationAmount, 0, -30)
+    SetTimer(() => ToolTip(), -2000)
+}
+
+UpdateAlwaysOnTop(*) {
+    global MyGui, alwaysOnTop
+    
+    guiValues := MyGui.Submit(false)
+    alwaysOnTop := guiValues.AlwaysOnTopToggle
+    
+    if (alwaysOnTop) {
+        WinSetAlwaysOnTop(true, MyGui.Hwnd)
+        ToolTip("GUI set to always on top", 0, -30)
+    } else {
+        WinSetAlwaysOnTop(false, MyGui.Hwnd)
+        ToolTip("GUI no longer always on top", 0, -30)
+    }
     SetTimer(() => ToolTip(), -2000)
 }
 
@@ -635,7 +627,7 @@ UpdateSpinDelay(*) {
 }
 
 ApplySettings(*) {
-    global recoveryCycleEnabled, autoSellEnabled, uiNavigationKey, selectedResolution, movementType, autoTotemEnabled, autoReconnectEnabled, donationAmount
+    global recoveryCycleEnabled, autoSellEnabled, uiNavigationKey, selectedResolution, movementType, autoTotemEnabled, autoReconnectEnabled, donationAmount, alwaysOnTop
 
     UpdateTerrainType()
     UpdateClickDelay()
@@ -646,12 +638,14 @@ ApplySettings(*) {
     UpdateResolution()
     UpdateMovementType()
     UpdateDonationAmount()
+    UpdateAlwaysOnTop()
 
     guiValues := MyGui.Submit(false)
     recoveryCycleEnabled := guiValues.RecoveryToggle
     autoSellEnabled := guiValues.AutoSellToggle
     autoTotemEnabled := guiValues.AutoTotemToggle
     uiNavigationKey := FormatUIKey(guiValues.UIKey)
+    alwaysOnTop := guiValues.AlwaysOnTopToggle
 
     autoReconnectEnabled := recoveryCycleEnabled
 }
@@ -756,7 +750,8 @@ AutoTotemCheck() {
 
 LoadSettings()
 
-MyGui := Gui("+AlwaysOnTop -Resize -MaximizeBox", "moris dig macro v4.1")
+guiOptions := alwaysOnTop ? "+AlwaysOnTop -Resize -MaximizeBox" : "-Resize -MaximizeBox"
+MyGui := Gui(guiOptions, "moris dig macro v4.2")
 MyGui.MarginX := 10
 MyGui.MarginY := 10
 
@@ -854,13 +849,16 @@ MyGui.Add("Text", "x210 y95", "Cycles:")
 cycleCountText := MyGui.Add("Edit", "x210 y115 w35 ReadOnly", String(recoveryCycleCount))
 MyGui.Add("Button", "x247 y114 w22 h23", "↻").OnEvent("Click", ResetCycleCount)
 
-MyGui.Add("Text", "x150 y198", "Ui Navigation Key:")
+MyGui.Add("Text", "x150 y198", "UI Navigation Key:")
 uiKeyEdit := MyGui.Add("Edit", "x245 y194 w20 r1 Center vUIKey", uiNavigationKey)
+
+MyGui.Add("Checkbox", "x31 y168 vAlwaysOnTopToggle", "Always On Top").Value := alwaysOnTop
+alwaysOnTopCheckbox := MyGui["AlwaysOnTopToggle"]
+alwaysOnTopCheckbox.OnEvent("Click", UpdateAlwaysOnTop)
 
 MyGui.Add("Button", "x30 y195 w110 h20", "Reset to Default").OnEvent("Click", ResetSettingsToDefault)
 
 TabCtrl.UseTab("  Instructions  ")
-
 
 MyGui.Add("Text", "x40 y60 w220 Center", "Join the Discord with the button below for instructions in the #instructions channel with a tutorial video and a written guide.")
 
@@ -944,6 +942,7 @@ stableModeActive := false
 F1::
 {
     global scanning, followInterval, recoveryCycleEnabled, terrainColors, autoTotemEnabled, lastAutoTotemTime, autoReconnectEnabled
+    global lastScanTime, failsafeEnabled
 
     if (terrainColors.Count = 0) {
         MsgBox("Please add at least one custom terrain before starting the macro.")
@@ -952,11 +951,15 @@ F1::
 
     SaveSettings()
     ApplySettings()
+
+    ForceFullscreenMode()
+    Sleep(300)
+
+    UpdateResolution()
     
     ToolTip("Running scroll sequence", 10, 10)
     
     if (recoveryCycleEnabled) {
-
         Loop 18 {
             Send "{WheelUp}"
             Sleep 50
@@ -972,11 +975,16 @@ F1::
     
     scanning := !scanning
     if (scanning) {
+        lastScanTime := A_TickCount
+        failsafeEnabled := true
+        
         ToolTip("Scroll sequence completed - Starting color tracking", 10, 10)
         SetTimer(ScanForColor, followInterval)
         if (recoveryCycleEnabled) {
             SetTimer(CheckPixelTimeout, 1000)
         }
+
+        SetTimer(CheckFailsafe, 180000)
 
         if (autoTotemEnabled) {
             lastAutoTotemTime := A_TickCount
@@ -987,15 +995,17 @@ F1::
         }
 
         if (autoReconnectEnabled) {
-            SetTimer(CheckAutoReconnect, 900000) ; 15 mieutes
+            SetTimer(CheckAutoReconnect, 900000)
             SendWebhook("Started with Auto Reconnect enabled")
         }
     } else {
+        failsafeEnabled := false
         ToolTip("Color tracking stopped", 10, 10)
         SetTimer(ScanForColor, 0)
         SetTimer(CheckPixelTimeout, 0)
         SetTimer(AutoTotemCheck, 0)
         SetTimer(CheckAutoReconnect, 0)
+        SetTimer(CheckFailsafe, 0)
         SetTimer(() => ToolTip(), -2000)
     }
 }
@@ -1031,10 +1041,15 @@ ScanForColor() {
     global clickDelay, clickCooldown, lastClickTime, lastFoundX, lastFoundY
     global lastPixelFoundTime, recoveryActive, clickLoopActive, recoveryCycleEnabled
     global pixelFoundAfterRecovery, lastRecoveryTime, stableModeActive, movementType
+    global lastScanTime, failsafeEnabled
     static searchDirection := "RightToLeft"
     
     if (!scanning)
         return
+
+    if (failsafeEnabled) {
+        lastScanTime := A_TickCount
+    }
 
     mouseBuffer := 50
 
@@ -1303,5 +1318,75 @@ ResumeScanRecovery() {
         
         ToolTip("Recovery resumed after totem placement", 10, 150)
         SetTimer(() => ToolTip(), -2000)
+    }
+}
+
+ForceFullscreenMode() {
+    robloxWindow := 0
+
+    windowTitles := [
+        "ahk_exe RobloxPlayerBeta.exe",
+        "ahk_class WINDOWSCLIENT", 
+        "Roblox",
+        "ahk_exe RobloxPlayerLauncher.exe"
+    ]
+    
+    for title in windowTitles {
+        robloxWindow := WinExist(title)
+        if (robloxWindow) {
+            break
+        }
+    }
+
+    if (!robloxWindow) {
+        activeWindow := WinGetTitle("A")
+        if (InStr(activeWindow, "Roblox") || WinGetProcessName("A") = "RobloxPlayerBeta.exe") {
+            robloxWindow := WinExist("A")
+        }
+    }
+    
+    if (robloxWindow) {
+        windowTitle := WinGetTitle(robloxWindow)
+        processName := WinGetProcessName(robloxWindow)
+
+        if (InStr(processName, "Roblox") || InStr(windowTitle, "Roblox")) {
+            WinActivate(robloxWindow)
+            Sleep(500)
+
+            WinGetPos(&winX, &winY, &winWidth, &winHeight, robloxWindow)
+
+            MonitorGet(1, &monLeft, &monTop, &monRight, &monBottom)
+            monWidth := monRight - monLeft
+            monHeight := monBottom - monTop
+
+            isExclusiveFullscreen := (winX = monLeft && winY = monTop && winWidth = monWidth && winHeight = monHeight)
+            isBorderlessFullscreen := (Abs(winWidth - monWidth) <= 10 && Abs(winHeight - monHeight) <= 10 && winX <= 5 && winY <= 5)
+            isWindowedMode := (winWidth < monWidth - 50 || winHeight < monHeight - 100)
+
+            if (isWindowedMode) {
+                Send("{F11}")
+                Sleep(500)
+                ToolTip("Switched from windowed to fullscreen mode", 0, -50)
+                SetTimer(() => ToolTip(), -2000)
+            } else if (isBorderlessFullscreen && !isExclusiveFullscreen) {
+                Send("{F11}")
+                Sleep(200)
+                Send("{F11}")
+                Sleep(500)
+                ToolTip("Switched from windowed fullscreen to exclusive fullscreen", 0, -50)
+                SetTimer(() => ToolTip(), -2000)
+            } else if (isExclusiveFullscreen) {
+                ToolTip("Already in exclusive fullscreen mode", 0, -50)
+                SetTimer(() => ToolTip(), -2000)
+            } else {
+                Send("{F11}")
+                Sleep(500)
+                ToolTip("Forced fullscreen mode", 0, -50)
+                SetTimer(() => ToolTip(), -2000)
+            }
+        }
+    } else {
+        ToolTip("Roblox window not found - Please ensure Roblox is running", 0, -30)
+        SetTimer(() => ToolTip(), -3000)
     }
 }
