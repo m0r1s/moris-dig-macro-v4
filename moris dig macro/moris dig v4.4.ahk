@@ -7,7 +7,8 @@ defaultTerrainColors := Map()
 
 resolutionConfigs := Map(
     "1920x1080", {width: 1920, height: 1080, scanLeft: 512, scanTop: 916, scanRight: 1397, scanBottom: 926, reconnectX: 1085, reconnectY: 626, moveDistance: 30},
-    "2560x1440", {width: 2560, height: 1440, scanLeft: 682, scanTop: 1214, scanRight: 1862, scanBottom: 1230, reconnectX: 1339, reconnectY: 807, moveDistance: 40}
+    "2560x1440", {width: 2560, height: 1440, scanLeft: 682, scanTop: 1214, scanRight: 1862, scanBottom: 1230, reconnectX: 1339, reconnectY: 807, moveDistance: 40},
+    "1366x768", {width: 1366, height: 768, scanLeft: 364, scanTop: 651, scanRight: 994, scanBottom: 661, reconnectX: 740, reconnectY: 471, moveDistance: 20}
 )
 
 selectedResolution := "1920x1080"
@@ -92,6 +93,7 @@ SendWebhook(message) {
 
 CheckAutoReconnect() {
     global autoReconnectEnabled, selectedResolution, resolutionConfigs, reconnectColor, scanning
+    global followInterval, recoveryCycleEnabled
     
     if (!autoReconnectEnabled || !scanning) {
         return
@@ -109,6 +111,16 @@ CheckAutoReconnect() {
             ToolTip("Disconnect detected! Auto reconnecting...", 10, 190)
             SendWebhook("Disconnect detected - Auto reconnecting")
 
+            SetTimer(ScanForColor, 0)
+            SetTimer(CheckPixelTimeout, 0)
+
+            wasScanning := scanning
+            wasRecoveryEnabled := recoveryCycleEnabled
+
+            scanning := false
+            recoveryActive := false
+            clickLoopActive := false
+
             startX := reconnectX
             currentX := startX
             clickCount := 0
@@ -122,13 +134,12 @@ CheckAutoReconnect() {
 
                 newPixelColor := PixelGetColor(reconnectX, reconnectY)
                 if (newPixelColor != reconnectColor) {
-                    ToolTip("Auto reconnect successful after " . clickCount . " clicks", 10, 190)
-                    SendWebhook("Auto reconnect successful after " . clickCount . " clicks")
-                    SetTimer(() => ToolTip(), -3000)
-                    return
+                    ToolTip("Auto reconnect successful after " . clickCount . " clicks - Starting realignment...", 10, 190)
+                    SendWebhook("Auto reconnect successful after " . clickCount . " clicks - Starting realignment")
+                    break
                 }
             }
-            
+
             Sleep 35000
 
             Loop 18 {
@@ -143,8 +154,23 @@ CheckAutoReconnect() {
             Sleep 600
             Click "Left"
 
-            ToolTip("Auto reconnect completed - " . maxClicks . " clicks attempted", 10, 190)
-            SendWebhook("Auto reconnect completed - " . maxClicks . " clicks attempted")
+            if (wasScanning) {
+                scanning := true
+                lastPixelFoundTime := A_TickCount
+
+                SetTimer(ScanForColor, followInterval)
+
+                if (wasRecoveryEnabled) {
+                    SetTimer(CheckPixelTimeout, 1000)
+                }
+                
+                ToolTip("Auto reconnect and realignment completed", 10, 190)
+                SendWebhook("Auto reconnect and realignment completed")
+            } else {
+                ToolTip("Auto reconnect and realignment completed - " . maxClicks . " clicks attempted", 10, 190)
+                SendWebhook("Auto reconnect and realignment completed - " . maxClicks . " clicks attempted")
+            }
+            
             SetTimer(() => ToolTip(), -3000)
         }
     } catch as err {
@@ -646,7 +672,7 @@ FormatUIKey(key) {
 }
 
 CheckAutoSell() {
-    global autoSellEnabled, recoveryCycleCount, lastAutoSellCycle, uiNavigationKey
+    global autoSellEnabled, recoveryCycleCount, lastAutoSellCycle, uiNavigationKey, selectedResolution
     
     if (!autoSellEnabled) {
         return
@@ -658,18 +684,36 @@ CheckAutoSell() {
         ToolTip("Auto Sell activated!", 10, 70)
     
         Sleep 500
-        Send "g"
-        Sleep 300
-        SendInput(uiNavigationKey)
-        Sleep 300
-        Send "{Down}"
-        Sleep 300
-        Send "{Enter}"
-        Sleep 300
-        SendInput(uiNavigationKey)
-        Send "g"
 
-        ToolTip("Auto Sell completed", 10, 70)
+        if (selectedResolution = "1366x768") {
+            Send "g"
+            Sleep 300
+            SendInput(uiNavigationKey)
+            Sleep 300
+            Send "{Down}"
+            Sleep 300
+            Send "{Up}"
+            Sleep 300
+            Send "{Enter}"
+            Sleep 300
+            SendInput(uiNavigationKey)
+            Send "g"
+            ToolTip("Auto Sell completed", 10, 70)
+        } else {
+
+            Send "g"
+            Sleep 300
+            SendInput(uiNavigationKey)
+            Sleep 300
+            Send "{Down}"
+            Sleep 300
+            Send "{Enter}"
+            Sleep 300
+            SendInput(uiNavigationKey)
+            Send "g"
+            ToolTip("Auto Sell completed", 10, 70)
+        }
+
         SetTimer(() => ToolTip(), -3000)
         
         SaveSettings()
@@ -679,7 +723,7 @@ CheckAutoSell() {
 LoadSettings()
 
 guiOptions := alwaysOnTopEnabled ? "+AlwaysOnTop -Resize -MaximizeBox" : "-Resize -MaximizeBox"
-MyGui := Gui(guiOptions, "moris dig macro v4.3")
+MyGui := Gui(guiOptions, "moris dig macro v4.4")
 MyGui.MarginX := 10
 MyGui.MarginY := 10
 
@@ -711,10 +755,10 @@ for index, movement in ["Fast Mode", "Stable Mode"] {
 }
 
 MyGui.Add("Text", "x168 y95", "Resolution:")
-resolutionDropdown := MyGui.Add("DropDownList", "x168 y115 w100 vSelectedResolution", ["1920x1080", "2560x1440"])
+resolutionDropdown := MyGui.Add("DropDownList", "x168 y115 w100 vSelectedResolution", ["1920x1080", "2560x1440", "1366x768"])
 resolutionDropdown.OnEvent("Change", UpdateResolution)
 
-for index, resolution in ["1920x1080", "2560x1440"] {
+for index, resolution in ["1920x1080", "2560x1440", "1366x768"] {
     if (resolution = selectedResolution) {
         resolutionDropdown.Value := index
         break
