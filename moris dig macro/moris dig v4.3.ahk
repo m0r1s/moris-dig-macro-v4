@@ -6,17 +6,15 @@
 defaultTerrainColors := Map()
 
 resolutionConfigs := Map(
-    "1920x1080 (Base)", {width: 1920, height: 1080, scanLeft: 512, scanTop: 916, scanRight: 1397, scanBottom: 926, reconnectX: 1085, reconnectY: 626, moveDistance: 30},
+    "1920x1080", {width: 1920, height: 1080, scanLeft: 512, scanTop: 916, scanRight: 1397, scanBottom: 926, reconnectX: 1085, reconnectY: 626, moveDistance: 30},
     "2560x1440", {width: 2560, height: 1440, scanLeft: 682, scanTop: 1214, scanRight: 1862, scanBottom: 1230, reconnectX: 1339, reconnectY: 807, moveDistance: 40}
 )
 
-selectedResolution := "1920x1080 (Base)"
+selectedResolution := "1920x1080"
 webhookURL := ""
 uiNavigationKey := "\"
 movementType := "Fast Mode"
 donationAmount := "10"
-alwaysOnTop := true
-
 donationLinks := Map(
     "10", "https://www.roblox.com/catalog/13790965350/Donation-10",
     "50", "https://www.roblox.com/catalog/13790067716/Donation-50",
@@ -25,13 +23,9 @@ donationLinks := Map(
     "500", "https://www.roblox.com/catalog/13790109084/Donation-500"
 )
 
-autoTotemEnabled := false
-lastAutoTotemTime := 0
 autoReconnectEnabled := false
 reconnectColor := 0x232527
-
-lastScanTime := 0
-failsafeEnabled := false
+alwaysOnTopEnabled := true
 
 defaultClickDelay := 5
 defaultClickScanRadius := 15
@@ -93,35 +87,6 @@ SendWebhook(message) {
         http.Send(json)
     } catch {
 
-    }
-}
-
-CheckFailsafe() {
-    global lastScanTime, failsafeEnabled, scanning
-    
-    if (!failsafeEnabled || !scanning) {
-        return
-    }
-    
-    currentTime := A_TickCount
-    timeSinceLastScan := currentTime - lastScanTime
-
-    if (timeSinceLastScan >= 60000) {
-        ToolTip("Failsafe triggered! Executing recovery sequence...", 10, 210)
-        SendWebhook("Failsafe triggered - No scan activity detected")
-
-        Send "{4}"
-        Sleep(500)
-        Send "{1}"
-        Sleep(500)
-        Send "{Space}"
-        Sleep(500)
-
-        lastScanTime := A_TickCount
-        
-        ToolTip("Failsafe sequence completed - Scan timer reset", 10, 210)
-        SetTimer(() => ToolTip(), -3000)
-        SendWebhook("Failsafe sequence completed - Continuing operation")
     }
 }
 
@@ -190,8 +155,8 @@ LoadSettings() {
     global settingsFile, clickDelay, clickScanRadius, clickCooldown, followInterval, spinDelay, selectedTerrainIndex
     global recoveryCycleEnabled, terrainColors, defaultTerrainColors, recoveryCycleCount, autoSellEnabled, lastAutoSellCycle
     global webhookURL, uiNavigationKey, lastRecoveryTime, pixelFoundAfterRecovery, successfulCycles, unsuccessfulCycles
-    global selectedResolution, movementType, autoTotemEnabled, lastAutoTotemTime, autoReconnectEnabled, donationAmount
-    global alwaysOnTop
+    global selectedResolution, movementType, autoReconnectEnabled, donationAmount
+    global alwaysOnTopEnabled
 
     clickDelay := 5
     clickScanRadius := 15
@@ -205,17 +170,15 @@ LoadSettings() {
     lastAutoSellCycle := 0
     webhookURL := ""
     uiNavigationKey := "\"
-    selectedResolution := "1920x1080 (Base)"
+    selectedResolution := "1920x1080"
     movementType := "Fast Mode"
     lastRecoveryTime := 0
     pixelFoundAfterRecovery := false
     successfulCycles := 0
     unsuccessfulCycles := 0
-    autoTotemEnabled := false
-    lastAutoTotemTime := 0
     autoReconnectEnabled := false
     donationAmount := "10"
-    alwaysOnTop := true
+    alwaysOnTopEnabled := true
 
     terrainColors := Map()
 
@@ -234,11 +197,9 @@ LoadSettings() {
         uiNavigationKey := IniRead(settingsFile, "Settings", "UINavigationKey", uiNavigationKey)
         selectedResolution := IniRead(settingsFile, "Settings", "SelectedResolution", selectedResolution)
         movementType := IniRead(settingsFile, "Settings", "MovementType", movementType)
-        autoTotemEnabled := IniRead(settingsFile, "Settings", "AutoTotemEnabled", autoTotemEnabled)
-        lastAutoTotemTime := IniRead(settingsFile, "Settings", "LastAutoTotemTime", lastAutoTotemTime)
         autoReconnectEnabled := IniRead(settingsFile, "Settings", "AutoReconnectEnabled", autoReconnectEnabled)
         donationAmount := IniRead(settingsFile, "Settings", "DonationAmount", donationAmount)
-        alwaysOnTop := IniRead(settingsFile, "Settings", "AlwaysOnTop", alwaysOnTop)
+        alwaysOnTopEnabled := IniRead(settingsFile, "Settings", "AlwaysOnTopEnabled", alwaysOnTopEnabled)
         
         LoadAllTerrains()
     }
@@ -304,8 +265,8 @@ LoadAllTerrains() {
 SaveSettings() {
     global settingsFile, clickDelay, clickScanRadius, clickCooldown, followInterval, spinDelay, terrainDropdown
     global recoveryCycleEnabled, recoveryCycleCount, autoSellEnabled, lastAutoSellCycle, webhookURL, uiNavigationKey
-    global selectedResolution, resolutionDropdown, movementType, movementTypeDropdown, autoTotemEnabled, lastAutoTotemTime
-    global autoReconnectEnabled, donationAmount, donationDropdown, alwaysOnTop
+    global selectedResolution, resolutionDropdown, movementType, movementTypeDropdown
+    global autoReconnectEnabled, donationAmount, donationDropdown, alwaysOnTopEnabled
 
     currentClickDelay := Integer(clickDelayEdit.Value)
     currentScanRadius := Integer(scanRadiusEdit.Value)
@@ -321,8 +282,7 @@ SaveSettings() {
     currentAutoSellToggle := guiValues.AutoSellToggle
     currentWebhookURL := guiValues.WebhookURL
     currentUIKey := FormatUIKey(guiValues.UIKey)
-    currentAutoTotemToggle := guiValues.AutoTotemToggle
-    currentAlwaysOnTop := guiValues.AlwaysOnTopToggle
+    currentAlwaysOnTopToggle := guiValues.AlwaysOnTopToggle
 
     IniWrite(currentClickDelay, settingsFile, "Settings", "ClickDelay")
     IniWrite(currentScanRadius, settingsFile, "Settings", "ScanRadius")
@@ -338,10 +298,8 @@ SaveSettings() {
     IniWrite(lastAutoSellCycle, settingsFile, "Settings", "LastAutoSellCycle")
     IniWrite(currentWebhookURL, settingsFile, "Settings", "WebhookURL")
     IniWrite(currentUIKey, settingsFile, "Settings", "UINavigationKey")
-    IniWrite(currentAutoTotemToggle, settingsFile, "Settings", "AutoTotemEnabled")
-    IniWrite(lastAutoTotemTime, settingsFile, "Settings", "LastAutoTotemTime")
     IniWrite(currentDonationAmount, settingsFile, "Settings", "DonationAmount")
-    IniWrite(currentAlwaysOnTop, settingsFile, "Settings", "AlwaysOnTop")
+    IniWrite(currentAlwaysOnTopToggle, settingsFile, "Settings", "AlwaysOnTopEnabled")
 
     autoReconnectEnabled := currentRecoveryToggle
     IniWrite(autoReconnectEnabled, settingsFile, "Settings", "AutoReconnectEnabled")
@@ -350,9 +308,10 @@ SaveSettings() {
     uiNavigationKey := currentUIKey
     selectedResolution := currentSelectedResolution
     movementType := currentMovementType
-    autoTotemEnabled := currentAutoTotemToggle
     donationAmount := currentDonationAmount
-    alwaysOnTop := currentAlwaysOnTop 
+    alwaysOnTopEnabled := currentAlwaysOnTopToggle
+
+    UpdateAlwaysOnTop()
 
     SaveAllTerrains()
 }
@@ -583,19 +542,24 @@ UpdateDonationAmount(*) {
 }
 
 UpdateAlwaysOnTop(*) {
-    global MyGui, alwaysOnTop
+    global alwaysOnTopEnabled, MyGui, settingsFile
     
-    guiValues := MyGui.Submit(false)
-    alwaysOnTop := guiValues.AlwaysOnTopToggle
-    
-    if (alwaysOnTop) {
-        WinSetAlwaysOnTop(true, MyGui.Hwnd)
-        ToolTip("GUI set to always on top", 0, -30)
-    } else {
-        WinSetAlwaysOnTop(false, MyGui.Hwnd)
-        ToolTip("GUI no longer always on top", 0, -30)
+    try {
+        guiValues := MyGui.Submit(false)
+        alwaysOnTopEnabled := guiValues.AlwaysOnTopToggle
+        
+        if (alwaysOnTopEnabled) {
+            MyGui.Opt("+AlwaysOnTop")
+            ToolTip("Always on top enabled", 0, -30)
+        } else {
+            MyGui.Opt("-AlwaysOnTop")
+            ToolTip("Always on top disabled", 0, -30)
+        }
+        SetTimer(() => ToolTip(), -2000)
+
+        IniWrite(alwaysOnTopEnabled, settingsFile, "Settings", "AlwaysOnTopEnabled")
+    } catch {
     }
-    SetTimer(() => ToolTip(), -2000)
 }
 
 UpdateClickDelay(*) {
@@ -627,7 +591,7 @@ UpdateSpinDelay(*) {
 }
 
 ApplySettings(*) {
-    global recoveryCycleEnabled, autoSellEnabled, uiNavigationKey, selectedResolution, movementType, autoTotemEnabled, autoReconnectEnabled, donationAmount, alwaysOnTop
+    global recoveryCycleEnabled, autoSellEnabled, uiNavigationKey, selectedResolution, movementType, autoReconnectEnabled, donationAmount
 
     UpdateTerrainType()
     UpdateClickDelay()
@@ -638,14 +602,11 @@ ApplySettings(*) {
     UpdateResolution()
     UpdateMovementType()
     UpdateDonationAmount()
-    UpdateAlwaysOnTop()
 
     guiValues := MyGui.Submit(false)
     recoveryCycleEnabled := guiValues.RecoveryToggle
     autoSellEnabled := guiValues.AutoSellToggle
-    autoTotemEnabled := guiValues.AutoTotemToggle
     uiNavigationKey := FormatUIKey(guiValues.UIKey)
-    alwaysOnTop := guiValues.AlwaysOnTopToggle
 
     autoReconnectEnabled := recoveryCycleEnabled
 }
@@ -691,20 +652,20 @@ CheckAutoSell() {
         return
     }
     
-    if (recoveryCycleCount >= lastAutoSellCycle + 5) {
+    if (recoveryCycleCount >= lastAutoSellCycle + 35) {
         lastAutoSellCycle := recoveryCycleCount
         
         ToolTip("Auto Sell activated!", 10, 70)
     
         Sleep 500
         Send "g"
-        Sleep 200
+        Sleep 300
         SendInput(uiNavigationKey)
-        Sleep 200
+        Sleep 300
         Send "{Down}"
-        Sleep 200
+        Sleep 300
         Send "{Enter}"
-        Sleep 200
+        Sleep 300
         SendInput(uiNavigationKey)
         Send "g"
 
@@ -715,43 +676,10 @@ CheckAutoSell() {
     }
 }
 
-AutoTotemCheck() {
-    global autoTotemEnabled, lastAutoTotemTime, scanning
-    
-    if (!autoTotemEnabled || !scanning) {
-        return
-    }
-    
-    currentTime := A_TickCount
-
-    if (currentTime - lastAutoTotemTime >= 1800000) { 
-        lastAutoTotemTime := currentTime
-
-        PauseScanRecovery()
-        
-        ToolTip("Auto Totem activated!", 10, 130)
-        SendWebhook("Auto Totem activated - Using totem")
-
-        Send "5"
-        Sleep 200
-        Click "Left"
-        Sleep 200
-        Send "1"
-        Sleep 500
-
-        ToolTip("Auto Totem completed - Resuming recovery", 10, 130)
-        SetTimer(() => ToolTip(), -3000)
-
-        ResumeScanRecovery()
-        
-        SaveSettings()
-    }
-}
-
 LoadSettings()
 
-guiOptions := alwaysOnTop ? "+AlwaysOnTop -Resize -MaximizeBox" : "-Resize -MaximizeBox"
-MyGui := Gui(guiOptions, "moris dig macro v4.2")
+guiOptions := alwaysOnTopEnabled ? "+AlwaysOnTop -Resize -MaximizeBox" : "-Resize -MaximizeBox"
+MyGui := Gui(guiOptions, "moris dig macro v4.3")
 MyGui.MarginX := 10
 MyGui.MarginY := 10
 
@@ -767,7 +695,6 @@ if (terrainColors.Count > 0) {
 
 MyGui.Add("Checkbox", "x27 y150 vRecoveryToggle", "AFK Mode").Value := recoveryCycleEnabled
 MyGui.Add("Checkbox", "x121 y150 vAutoSellToggle", "Auto Sell").Value := autoSellEnabled
-MyGui.Add("Checkbox", "x200 y150 vAutoTotemToggle", "Auto Totem").Value := autoTotemEnabled
 
 MyGui.Add("Text", "x30 y95", "Webhook URL:")
 webhookEdit := MyGui.Add("Edit", "x30 y115 w100 r1 vWebhookURL", webhookURL)
@@ -784,10 +711,10 @@ for index, movement in ["Fast Mode", "Stable Mode"] {
 }
 
 MyGui.Add("Text", "x168 y95", "Resolution:")
-resolutionDropdown := MyGui.Add("DropDownList", "x168 y115 w100 vSelectedResolution", ["1920x1080 (Base)", "2560x1440"])
+resolutionDropdown := MyGui.Add("DropDownList", "x168 y115 w100 vSelectedResolution", ["1920x1080", "2560x1440"])
 resolutionDropdown.OnEvent("Change", UpdateResolution)
 
-for index, resolution in ["1920x1080 (Base)", "2560x1440"] {
+for index, resolution in ["1920x1080", "2560x1440"] {
     if (resolution = selectedResolution) {
         resolutionDropdown.Value := index
         break
@@ -830,15 +757,15 @@ clickDelayEdit := MyGui.Add("Edit", "x30 y65 w60", clickDelay)
 clickDelayEdit.OnEvent("Change", UpdateClickDelay)
 
 MyGui.Add("Text", "x120 y45", "Scan Radius:")
-ScanRadiusEdit := MyGui.Add("Edit", "x120 y65 w60", clickScanRadius)
+scanRadiusEdit := MyGui.Add("Edit", "x120 y65 w60", clickScanRadius)
 scanRadiusEdit.OnEvent("Change", UpdateScanRadius)
 
 MyGui.Add("Text", "x210 y45", "Cooldown:")
-ClickCooldownEdit := MyGui.Add("Edit", "x210 y65 w60", clickCooldown)
+clickCooldownEdit := MyGui.Add("Edit", "x210 y65 w60", clickCooldown)
 clickCooldownEdit.OnEvent("Change", UpdateClickCooldown)
 
 MyGui.Add("Text", "x30 y95", "Follow Interval:")
-FollowIntervalEdit := MyGui.Add("Edit", "x30 y115 w60", followInterval)
+followIntervalEdit := MyGui.Add("Edit", "x30 y115 w60", followInterval)
 followIntervalEdit.OnEvent("Change", UpdateFollowInterval)
 
 MyGui.Add("Text", "x120 y95", "Spin Delay:")
@@ -849,14 +776,14 @@ MyGui.Add("Text", "x210 y95", "Cycles:")
 cycleCountText := MyGui.Add("Edit", "x210 y115 w35 ReadOnly", String(recoveryCycleCount))
 MyGui.Add("Button", "x247 y114 w22 h23", "↻").OnEvent("Click", ResetCycleCount)
 
-MyGui.Add("Text", "x150 y198", "UI Navigation Key:")
+MyGui.Add("Text", "x150 y198", "Ui Navigation Key:")
 uiKeyEdit := MyGui.Add("Edit", "x245 y194 w20 r1 Center vUIKey", uiNavigationKey)
 
-MyGui.Add("Checkbox", "x31 y168 vAlwaysOnTopToggle", "Always On Top").Value := alwaysOnTop
-alwaysOnTopCheckbox := MyGui["AlwaysOnTopToggle"]
-alwaysOnTopCheckbox.OnEvent("Click", UpdateAlwaysOnTop)
-
 MyGui.Add("Button", "x30 y195 w110 h20", "Reset to Default").OnEvent("Click", ResetSettingsToDefault)
+
+alwaysOnTopCheckbox := MyGui.Add("Checkbox", "x30 y145 vAlwaysOnTopToggle", "Always On Top")
+alwaysOnTopCheckbox.Value := alwaysOnTopEnabled
+alwaysOnTopCheckbox.OnEvent("Click", UpdateAlwaysOnTop)
 
 TabCtrl.UseTab("  Instructions  ")
 
@@ -941,8 +868,7 @@ stableModeActive := false
 
 F1::
 {
-    global scanning, followInterval, recoveryCycleEnabled, terrainColors, autoTotemEnabled, lastAutoTotemTime, autoReconnectEnabled
-    global lastScanTime, failsafeEnabled
+    global scanning, followInterval, recoveryCycleEnabled, terrainColors, autoReconnectEnabled
 
     if (terrainColors.Count = 0) {
         MsgBox("Please add at least one custom terrain before starting the macro.")
@@ -975,37 +901,23 @@ F1::
     
     scanning := !scanning
     if (scanning) {
-        lastScanTime := A_TickCount
-        failsafeEnabled := true
-        
         ToolTip("Scroll sequence completed - Starting color tracking", 10, 10)
         SetTimer(ScanForColor, followInterval)
         if (recoveryCycleEnabled) {
             SetTimer(CheckPixelTimeout, 1000)
         }
 
-        SetTimer(CheckFailsafe, 180000)
-
-        if (autoTotemEnabled) {
-            lastAutoTotemTime := A_TickCount
-            SetTimer(AutoTotemCheck, 60000)
-            SendWebhook("Started with Auto Totem enabled")
-        } else {
-            SendWebhook("Started")
-        }
+        SendWebhook("Started")
 
         if (autoReconnectEnabled) {
             SetTimer(CheckAutoReconnect, 900000)
             SendWebhook("Started with Auto Reconnect enabled")
         }
     } else {
-        failsafeEnabled := false
         ToolTip("Color tracking stopped", 10, 10)
         SetTimer(ScanForColor, 0)
         SetTimer(CheckPixelTimeout, 0)
-        SetTimer(AutoTotemCheck, 0)
         SetTimer(CheckAutoReconnect, 0)
-        SetTimer(CheckFailsafe, 0)
         SetTimer(() => ToolTip(), -2000)
     }
 }
@@ -1041,15 +953,10 @@ ScanForColor() {
     global clickDelay, clickCooldown, lastClickTime, lastFoundX, lastFoundY
     global lastPixelFoundTime, recoveryActive, clickLoopActive, recoveryCycleEnabled
     global pixelFoundAfterRecovery, lastRecoveryTime, stableModeActive, movementType
-    global lastScanTime, failsafeEnabled
     static searchDirection := "RightToLeft"
     
     if (!scanning)
         return
-
-    if (failsafeEnabled) {
-        lastScanTime := A_TickCount
-    }
 
     mouseBuffer := 50
 
@@ -1157,7 +1064,7 @@ CheckPixelTimeout() {
 
         lastRecoveryTime := currentTime
 
-        if (autoSellEnabled && recoveryCycleCount >= lastAutoSellCycle + 5) {
+        if (autoSellEnabled && recoveryCycleCount >= lastAutoSellCycle + 35) {
             ToolTip("Auto Sell triggered - Pausing before recovery", 10, 70)
             CheckAutoSell()
             
@@ -1201,8 +1108,12 @@ StableModeRecovery() {
     global clickColors, clickColorVariation, clickScanRadius, clickCooldown, lastClickTime
     
     stableModeActive := true
-    Send "{Right down}"
+
+    Send "{4}"
     Sleep 300
+    Send "{1}"
+    Sleep 300
+    Send "{Right down}"
 
     SetTimer(SpamLeftClick, 50)
     
@@ -1292,32 +1203,6 @@ SafeClickRelative(xRatio, yRatio) {
         clickX := winX + Round(xRatio * winW)
         clickY := winY + Round(yRatio * winH)
         Click(clickX, clickY)
-    }
-}
-
-PauseScanRecovery() {
-    global scanning, followInterval
-
-    SetTimer(ScanForColor, 0)
-
-    SetTimer(CheckPixelTimeout, 0)
-    
-    ToolTip("Recovery paused for totem placement", 10, 150)
-}
-
-ResumeScanRecovery() {
-    global scanning, followInterval
-    
-    if (scanning) {
-        SetTimer(ScanForColor, followInterval)
-
-        SetTimer(CheckPixelTimeout, 1000)
-
-        global lastPixelFoundTime
-        lastPixelFoundTime := A_TickCount
-        
-        ToolTip("Recovery resumed after totem placement", 10, 150)
-        SetTimer(() => ToolTip(), -2000)
     }
 }
 
