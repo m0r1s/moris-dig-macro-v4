@@ -13,6 +13,8 @@ resolutionConfigs := Map(
 
 selectedResolution := "1920x1080"
 webhookURL := ""
+webhookMessageId := ""
+macroStartTime := 0
 uiNavigationKey := "\"
 movementType := "Fast Mode"
 donationAmount := "10"
@@ -27,6 +29,7 @@ donationLinks := Map(
 autoReconnectEnabled := false
 reconnectColor := 0x232527
 alwaysOnTopEnabled := true
+darkModeEnabled := false
 
 defaultClickDelay := 5
 defaultClickScanRadius := 15
@@ -34,6 +37,16 @@ defaultClickCooldown := 200
 defaultFollowInterval := 10
 defaultSpinDelay := 20
 defaultUINavigationKey := "\"
+
+DarkBG := "0x2D2D30"
+DarkControl := "0x1E1E1E"
+WhiteText := "0xFFFFFF"
+LightGrey := "0x404040"
+
+LightBG := "0xF0F0F0"
+LightControl := "0xFFFFFF"
+BlackText := "0x000000"
+DarkGrey := "0x808080"
 
 universalUi(o, e := 0, c := 0) {
     if (!c) {
@@ -75,6 +88,46 @@ terrainColors := Map()
 settingsFile := A_ScriptDir . "\settings.ini"
 
 SendWebhook(message) {
+    global webhookURL, webhookMessageId, macroStartTime, successfulCycles, unsuccessfulCycles, recoveryCycleCount
+    
+    if (webhookURL = "" || Trim(webhookURL) = "")
+        return
+
+    timeElapsed := A_TickCount - macroStartTime
+    hours := Floor(timeElapsed / 3600000)
+    minutes := Floor((timeElapsed - hours * 3600000) / 60000)
+    seconds := Floor((timeElapsed - hours * 3600000 - minutes * 60000) / 1000)
+    timeString := Format("{:02d}:{:02d}:{:02d}", hours, minutes, seconds)
+
+    totalCycles := successfulCycles + unsuccessfulCycles
+    successRate := totalCycles > 0 ? Round((successfulCycles / totalCycles) * 100, 1) : 0
+
+    embedJson := '{"embeds":[{"title":"__Macro Status__","color":5814783,"fields":[{"name":"__Time Elapsed__","value":"' . timeString . '","inline":true},{"name":"__Successful Cycles__","value":"' . successfulCycles . '","inline":true},{"name":"__Unsuccessful Cycles__","value":"' . unsuccessfulCycles . '","inline":true},{"name":"__Success Rate__","value":"' . successRate . '%","inline":true},{"name":"__Total Cycles__","value":"' . recoveryCycleCount . '","inline":true},{"name":"__Status__","value":"' . message . '","inline":true}]}]}'
+    
+    try {
+        http := ComObject("WinHttp.WinHttpRequest.5.1")
+
+        if (webhookMessageId != "") {
+            http.Open("PATCH", webhookURL . "/messages/" . webhookMessageId, false)
+        } else {
+            http.Open("POST", webhookURL . "?wait=true", false)
+        }
+        
+        http.SetRequestHeader("Content-Type", "application/json")
+        http.Send(embedJson)
+
+        if (webhookMessageId = "") {
+            response := http.ResponseText
+            if (RegExMatch(response, '"id":"(\d+)"', &match)) {
+                webhookMessageId := match[1]
+            }
+        }
+    } catch {
+        webhookMessageId := ""
+    }
+}
+
+SendSimpleWebhook(message) {
     global webhookURL
     if (webhookURL = "" || Trim(webhookURL) = "")
         return
@@ -109,7 +162,7 @@ CheckAutoReconnect() {
         
         if (pixelColor = reconnectColor) {
             ToolTip("Disconnect detected! Auto reconnecting...", 10, 190)
-            SendWebhook("Disconnect detected - Auto reconnecting")
+            SendSimpleWebhook("Disconnect detected - Auto reconnecting")
 
             SetTimer(ScanForColor, 0)
             SetTimer(CheckPixelTimeout, 0)
@@ -135,7 +188,7 @@ CheckAutoReconnect() {
                 newPixelColor := PixelGetColor(reconnectX, reconnectY)
                 if (newPixelColor != reconnectColor) {
                     ToolTip("Auto reconnect successful after " . clickCount . " clicks - Starting realignment...", 10, 190)
-                    SendWebhook("Auto reconnect successful after " . clickCount . " clicks - Starting realignment")
+                    SendSimpleWebhook("Auto reconnect successful after " . clickCount . " clicks - Starting realignment")
                     break
                 }
             }
@@ -165,10 +218,10 @@ CheckAutoReconnect() {
                 }
                 
                 ToolTip("Auto reconnect and realignment completed", 10, 190)
-                SendWebhook("Auto reconnect and realignment completed")
+                SendSimpleWebhook("Auto reconnect and realignment completed")
             } else {
                 ToolTip("Auto reconnect and realignment completed - " . maxClicks . " clicks attempted", 10, 190)
-                SendWebhook("Auto reconnect and realignment completed - " . maxClicks . " clicks attempted")
+                SendSimpleWebhook("Auto reconnect and realignment completed - " . maxClicks . " clicks attempted")
             }
             
             SetTimer(() => ToolTip(), -3000)
@@ -182,7 +235,8 @@ LoadSettings() {
     global recoveryCycleEnabled, terrainColors, defaultTerrainColors, recoveryCycleCount, autoSellEnabled, lastAutoSellCycle
     global webhookURL, uiNavigationKey, lastRecoveryTime, pixelFoundAfterRecovery, successfulCycles, unsuccessfulCycles
     global selectedResolution, movementType, autoReconnectEnabled, donationAmount
-    global alwaysOnTopEnabled
+    global alwaysOnTopEnabled, darkModeEnabled
+    global lastShovelFixCycle
 
     clickDelay := 5
     clickScanRadius := 15
@@ -205,6 +259,8 @@ LoadSettings() {
     autoReconnectEnabled := false
     donationAmount := "10"
     alwaysOnTopEnabled := true
+    darkModeEnabled := false
+    lastShovelFixCycle := 0
 
     terrainColors := Map()
 
@@ -226,6 +282,7 @@ LoadSettings() {
         autoReconnectEnabled := IniRead(settingsFile, "Settings", "AutoReconnectEnabled", autoReconnectEnabled)
         donationAmount := IniRead(settingsFile, "Settings", "DonationAmount", donationAmount)
         alwaysOnTopEnabled := IniRead(settingsFile, "Settings", "AlwaysOnTopEnabled", alwaysOnTopEnabled)
+        darkModeEnabled := IniRead(settingsFile, "Settings", "DarkModeEnabled", darkModeEnabled)
         
         LoadAllTerrains()
     }
@@ -292,7 +349,8 @@ SaveSettings() {
     global settingsFile, clickDelay, clickScanRadius, clickCooldown, followInterval, spinDelay, terrainDropdown
     global recoveryCycleEnabled, recoveryCycleCount, autoSellEnabled, lastAutoSellCycle, webhookURL, uiNavigationKey
     global selectedResolution, resolutionDropdown, movementType, movementTypeDropdown
-    global autoReconnectEnabled, donationAmount, donationDropdown, alwaysOnTopEnabled
+    global autoReconnectEnabled, donationAmount, donationDropdown, alwaysOnTopEnabled, darkModeEnabled
+    global lastShovelFixCycle
 
     currentClickDelay := Integer(clickDelayEdit.Value)
     currentScanRadius := Integer(scanRadiusEdit.Value)
@@ -309,6 +367,7 @@ SaveSettings() {
     currentWebhookURL := guiValues.WebhookURL
     currentUIKey := FormatUIKey(guiValues.UIKey)
     currentAlwaysOnTopToggle := guiValues.AlwaysOnTopToggle
+    currentDarkModeToggle := guiValues.DarkModeToggle
 
     IniWrite(currentClickDelay, settingsFile, "Settings", "ClickDelay")
     IniWrite(currentScanRadius, settingsFile, "Settings", "ScanRadius")
@@ -326,6 +385,7 @@ SaveSettings() {
     IniWrite(currentUIKey, settingsFile, "Settings", "UINavigationKey")
     IniWrite(currentDonationAmount, settingsFile, "Settings", "DonationAmount")
     IniWrite(currentAlwaysOnTopToggle, settingsFile, "Settings", "AlwaysOnTopEnabled")
+    IniWrite(currentDarkModeToggle, settingsFile, "Settings", "DarkModeEnabled")
 
     autoReconnectEnabled := currentRecoveryToggle
     IniWrite(autoReconnectEnabled, settingsFile, "Settings", "AutoReconnectEnabled")
@@ -336,6 +396,7 @@ SaveSettings() {
     movementType := currentMovementType
     donationAmount := currentDonationAmount
     alwaysOnTopEnabled := currentAlwaysOnTopToggle
+    darkModeEnabled := currentDarkModeToggle
 
     UpdateAlwaysOnTop()
 
@@ -588,6 +649,22 @@ UpdateAlwaysOnTop(*) {
     }
 }
 
+UpdateDarkMode(*) {
+    global darkModeEnabled, MyGui, settingsFile
+    
+    try {
+        guiValues := MyGui.Submit(false)
+        darkModeEnabled := guiValues.DarkModeToggle
+
+        IniWrite(darkModeEnabled, settingsFile, "Settings", "DarkModeEnabled")
+        
+        SaveSettings()
+        SaveGuiPosition()
+        Reload
+    } catch {
+    }
+}
+
 UpdateClickDelay(*) {
     global clickDelay
     clickDelay := Integer(clickDelayEdit.Value)
@@ -687,29 +764,31 @@ CheckAutoSell() {
 
         if (selectedResolution = "1366x768") {
             Send "g"
-            Sleep 300
+            Sleep 500
             SendInput(uiNavigationKey)
-            Sleep 300
+            Sleep 500
             Send "{Down}"
-            Sleep 300
+            Sleep 500
             Send "{Up}"
-            Sleep 300
+            Sleep 500
             Send "{Enter}"
-            Sleep 300
+            Sleep 500
             SendInput(uiNavigationKey)
-            Send "g"
+            Sleep 500
+            Send "g"          
             ToolTip("Auto Sell completed", 10, 70)
         } else {
 
             Send "g"
-            Sleep 300
+            Sleep 500
             SendInput(uiNavigationKey)
-            Sleep 300
+            Sleep 500
             Send "{Down}"
-            Sleep 300
+            Sleep 500
             Send "{Enter}"
-            Sleep 300
+            Sleep 500
             SendInput(uiNavigationKey)
+            Sleep 500
             Send "g"
             ToolTip("Auto Sell completed", 10, 70)
         }
@@ -720,31 +799,112 @@ CheckAutoSell() {
     }
 }
 
+CheckShovelFix() {
+    global recoveryCycleCount, lastShovelFixCycle, recoveryCycleEnabled
+    
+    if (!recoveryCycleEnabled) {
+        return
+    }
+    
+    if (recoveryCycleCount >= lastShovelFixCycle + 12) {
+        lastShovelFixCycle := recoveryCycleCount
+        
+        ToolTip("Shovel Fix activated!", 10, 70)
+
+        Sleep 300
+        Send "{4}"
+        Sleep 300
+        Send "{1}"
+
+        SetTimer(() => ToolTip(), -3000)
+        
+        SaveSettings()
+    }
+}
+
 LoadSettings()
 
+GetThemeColors() {
+    global darkModeEnabled, DarkBG, DarkControl, WhiteText, LightGrey
+    global LightBG, LightControl, BlackText, DarkGrey
+    
+    if (darkModeEnabled) {
+        return {
+            bgColor: DarkBG,
+            controlColor: DarkControl,
+            textColor: WhiteText,
+            accentColor: LightGrey
+        }
+    } else {
+        return {
+            bgColor: LightBG,
+            controlColor: LightControl,
+            textColor: BlackText,
+            accentColor: DarkGrey
+        }
+    }
+}
+
+ApplyThemeToGui() {
+    global MyGui, TabCtrl, terrainDropdown, webhookEdit, movementTypeDropdown, resolutionDropdown
+    global customNameEdit, customColorEdit, customTerrainList, clickDelayEdit, scanRadiusEdit
+    global clickCooldownEdit, followIntervalEdit, spinDelayEdit, cycleCountText, uiKeyEdit
+    global donationDropdown, DiscordBtn, DonateBtn
+    
+    colors := GetThemeColors()
+
+    MyGui.BackColor := colors.bgColor
+
+    TabCtrl.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+
+    terrainDropdown.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    movementTypeDropdown.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    resolutionDropdown.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    donationDropdown.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+
+    webhookEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    customNameEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    customColorEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    clickDelayEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    scanRadiusEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    clickCooldownEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    followIntervalEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    spinDelayEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    cycleCountText.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    uiKeyEdit.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+
+    customTerrainList.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+
+    DiscordBtn.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+    DonateBtn.Opt("c" . colors.textColor . " Background" . colors.controlColor)
+}
+
+colors := GetThemeColors()
+
 guiOptions := alwaysOnTopEnabled ? "+AlwaysOnTop -Resize -MaximizeBox" : "-Resize -MaximizeBox"
-MyGui := Gui(guiOptions, "moris dig macro v4.4")
+MyGui := Gui(guiOptions, "moris dig macro v4.5")
 MyGui.MarginX := 10
 MyGui.MarginY := 10
+MyGui.BackColor := colors.bgColor
 
-TabCtrl := MyGui.Add("Tab3", "w282 h226", ["   Start   ", " Create Terrain ", "  Settings  ", "  Instructions  "])
+TabCtrl := MyGui.Add("Tab3", "x10 y10 w282 h226 c" . colors.textColor . " Background" . colors.controlColor, ["   Start   ", " Create Terrain ", "  Settings  ", "  Instructions  "])
 
 TabCtrl.UseTab("   Start   ")
-MyGui.Add("Text", "x30 y45 w220", "Terrain:")
-terrainDropdown := MyGui.Add("DropDownList", "x30 y65 w100 vSelectedTerrain", GetTerrainNames())
+MyGui.Add("Text", "x30 y45 w220 c" . colors.textColor, "Terrain:")
+terrainDropdown := MyGui.Add("DropDownList", "x30 y65 w100 vSelectedTerrain c" . colors.textColor . " Background" . colors.controlColor, GetTerrainNames())
 terrainDropdown.OnEvent("Change", UpdateTerrainType)
 if (terrainColors.Count > 0) {
     terrainDropdown.Value := selectedTerrainIndex
 }
 
-MyGui.Add("Checkbox", "x27 y150 vRecoveryToggle", "AFK Mode").Value := recoveryCycleEnabled
-MyGui.Add("Checkbox", "x121 y150 vAutoSellToggle", "Auto Sell").Value := autoSellEnabled
+MyGui.Add("Checkbox", "x27 y150 vRecoveryToggle c" . colors.textColor, "AFK Mode").Value := recoveryCycleEnabled
+MyGui.Add("Checkbox", "x121 y150 vAutoSellToggle c" . colors.textColor, "Auto Sell").Value := autoSellEnabled
 
-MyGui.Add("Text", "x30 y95", "Webhook URL:")
-webhookEdit := MyGui.Add("Edit", "x30 y115 w100 r1 vWebhookURL", webhookURL)
+MyGui.Add("Text", "x30 y95 c" . colors.textColor, "Webhook URL:")
+webhookEdit := MyGui.Add("Edit", "x30 y115 w100 r1 vWebhookURL c" . colors.textColor . " Background" . colors.controlColor, webhookURL)
 
-MyGui.Add("Text", "x168 y45", "Movement Type:")
-movementTypeDropdown := MyGui.Add("DropDownList", "x168 y65 w100 vMovementType", ["Fast Mode", "Stable Mode"])
+MyGui.Add("Text", "x168 y45 c" . colors.textColor, "Movement Type:")
+movementTypeDropdown := MyGui.Add("DropDownList", "x168 y65 w100 vMovementType c" . colors.textColor . " Background" . colors.controlColor, ["Fast Mode", "Stable Mode"])
 movementTypeDropdown.OnEvent("Change", UpdateMovementType)
 
 for index, movement in ["Fast Mode", "Stable Mode"] {
@@ -754,8 +914,9 @@ for index, movement in ["Fast Mode", "Stable Mode"] {
     }
 }
 
-MyGui.Add("Text", "x168 y95", "Resolution:")
-resolutionDropdown := MyGui.Add("DropDownList", "x168 y115 w100 vSelectedResolution", ["1920x1080", "2560x1440", "1366x768"])
+MyGui.Add("Text", "x168 y95 c" . colors.textColor, "Resolution:")
+resolutionDropdown := MyGui.Add("DropDownList", "x168 y115 w100 vSelectedResolution c" . colors.textColor . " Background" . colors.controlColor, ["1920x1080", "2560x1440", "1366x768"])
+resolutionDropdown.OnEvent("Change", UpdateResolution)
 resolutionDropdown.OnEvent("Change", UpdateResolution)
 
 for index, resolution in ["1920x1080", "2560x1440", "1366x768"] {
@@ -765,9 +926,9 @@ for index, resolution in ["1920x1080", "2560x1440", "1366x768"] {
     }
 }
 
-MyGui.Add("Button", "x21 y179 w80 h45", "Start Macro (F1)").OnEvent("Click", (*) => Send("{F1}"))
-MyGui.Add("Button", "x109 y179 w80 h45", "Reload Macro (F2)").OnEvent("Click", (*) => Send("{F2}"))
-MyGui.Add("Button", "x196 y179 w80 h45", "Scan Color  (F3)").OnEvent("Click", delayedScan)
+MyGui.Add("Button", "x21 y179 w80 h45 c" . colors.textColor . " Background" . colors.controlColor, "Start Macro (F1)").OnEvent("Click", (*) => Send("{F1}"))
+MyGui.Add("Button", "x109 y179 w80 h45 c" . colors.textColor . " Background" . colors.controlColor, "Reload Macro (F2)").OnEvent("Click", (*) => Send("{F2}"))
+MyGui.Add("Button", "x196 y179 w80 h45 c" . colors.textColor . " Background" . colors.controlColor, "Scan Color  (F3)").OnEvent("Click", delayedScan)
 
 delayedScan(*) {
     Loop 3 {
@@ -781,59 +942,63 @@ delayedScan(*) {
 
 TabCtrl.UseTab(" Create Terrain ")
 
-MyGui.Add("Text", "x30 y45 w220 ", "Terrain Name:")
-customNameEdit := MyGui.Add("Edit", "x30 y65 w100")
+MyGui.Add("Text", "x30 y45 w220 c" . colors.textColor, "Terrain Name:")
+customNameEdit := MyGui.Add("Edit", "x30 y65 w100 c" . colors.textColor . " Background" . colors.controlColor)
 
-MyGui.Add("Text", "x30 y95 w220 ", "Color (0xRRGGBB):")
-customColorEdit := MyGui.Add("Edit", "x30 y115 w100",)
+MyGui.Add("Text", "x30 y95 w220 c" . colors.textColor, "Color (0xRRGGBB):")
+customColorEdit := MyGui.Add("Edit", "x30 y115 w100 c" . colors.textColor . " Background" . colors.controlColor)
 
-MyGui.Add("Button", "x30 y154 w100 h20", "Add Terrain").OnEvent("Click", AddCustomTerrain)
-MyGui.Add("Button", "x30 y193 w100 h20", "Delete Terrain").OnEvent("Click", DeleteCustomTerrain)
+MyGui.Add("Button", "x30 y154 w100 h20 c" . colors.textColor . " Background" . colors.controlColor, "Add Terrain").OnEvent("Click", AddCustomTerrain)
+MyGui.Add("Button", "x30 y193 w100 h20 c" . colors.textColor . " Background" . colors.controlColor, "Delete Terrain").OnEvent("Click", DeleteCustomTerrain)
 
-MyGui.Add("Text", "x145 y45 w220 ", "Existing Terrains:")
-customTerrainList := MyGui.Add("ListBox", "x145 y65 w120 h159 vCustomTerrainList")
+MyGui.Add("Text", "x145 y45 w220 c" . colors.textColor, "Existing Terrains:")
+customTerrainList := MyGui.Add("ListBox", "x145 y65 w120 h159 vCustomTerrainList c" . colors.textColor . " Background" . colors.controlColor)
 UpdateCustomTerrainList()
 
 TabCtrl.UseTab("  Settings  ")
 
-MyGui.Add("Text", "x30 y45 w220", "Click Delay:")
-clickDelayEdit := MyGui.Add("Edit", "x30 y65 w60", clickDelay)
+MyGui.Add("Text", "x30 y45 w220 c" . colors.textColor, "Click Delay:")
+clickDelayEdit := MyGui.Add("Edit", "x30 y65 w60 c" . colors.textColor . " Background" . colors.controlColor, clickDelay)
 clickDelayEdit.OnEvent("Change", UpdateClickDelay)
 
-MyGui.Add("Text", "x120 y45", "Scan Radius:")
-scanRadiusEdit := MyGui.Add("Edit", "x120 y65 w60", clickScanRadius)
+MyGui.Add("Text", "x120 y45 c" . colors.textColor, "Scan Radius:")
+scanRadiusEdit := MyGui.Add("Edit", "x120 y65 w60 c" . colors.textColor . " Background" . colors.controlColor, clickScanRadius)
 scanRadiusEdit.OnEvent("Change", UpdateScanRadius)
 
-MyGui.Add("Text", "x210 y45", "Cooldown:")
-clickCooldownEdit := MyGui.Add("Edit", "x210 y65 w60", clickCooldown)
+MyGui.Add("Text", "x210 y45 c" . colors.textColor, "Cooldown:")
+clickCooldownEdit := MyGui.Add("Edit", "x210 y65 w60 c" . colors.textColor . " Background" . colors.controlColor, clickCooldown)
 clickCooldownEdit.OnEvent("Change", UpdateClickCooldown)
 
-MyGui.Add("Text", "x30 y95", "Follow Interval:")
-followIntervalEdit := MyGui.Add("Edit", "x30 y115 w60", followInterval)
+MyGui.Add("Text", "x30 y95 c" . colors.textColor, "Follow Interval:")
+followIntervalEdit := MyGui.Add("Edit", "x30 y115 w60 c" . colors.textColor . " Background" . colors.controlColor, followInterval)
 followIntervalEdit.OnEvent("Change", UpdateFollowInterval)
 
-MyGui.Add("Text", "x120 y95", "Spin Delay:")
-spinDelayEdit := MyGui.Add("Edit", "x120 y115 w60", spinDelay)
+MyGui.Add("Text", "x120 y95 c" . colors.textColor, "Spin Delay:")
+spinDelayEdit := MyGui.Add("Edit", "x120 y115 w60 c" . colors.textColor . " Background" . colors.controlColor, spinDelay)
 spinDelayEdit.OnEvent("Change", UpdateSpinDelay)
 
-MyGui.Add("Text", "x210 y95", "Cycles:")
-cycleCountText := MyGui.Add("Edit", "x210 y115 w35 ReadOnly", String(recoveryCycleCount))
-MyGui.Add("Button", "x247 y114 w22 h23", "↻").OnEvent("Click", ResetCycleCount)
+MyGui.Add("Text", "x210 y95 c" . colors.textColor, "Cycles:")
+cycleCountText := MyGui.Add("Edit", "x210 y115 w35 ReadOnly c" . colors.textColor . " Background" . colors.controlColor, String(recoveryCycleCount))
+MyGui.Add("Button", "x247 y114 w22 h23 c" . colors.textColor . " Background" . colors.controlColor, "↻").OnEvent("Click", ResetCycleCount)
 
-MyGui.Add("Text", "x150 y198", "Ui Navigation Key:")
-uiKeyEdit := MyGui.Add("Edit", "x245 y194 w20 r1 Center vUIKey", uiNavigationKey)
+MyGui.Add("Text", "x150 y175 c" . colors.textColor, "Ui Navigation Key:")
+uiKeyEdit := MyGui.Add("Edit", "x245 y171 w20 r1 Center vUIKey c" . colors.textColor . " Background" . colors.controlColor, uiNavigationKey)
 
-MyGui.Add("Button", "x30 y195 w110 h20", "Reset to Default").OnEvent("Click", ResetSettingsToDefault)
+MyGui.Add("Button", "x30 y195 w110 h20 c" . colors.textColor . " Background" . colors.controlColor, "Reset to Default").OnEvent("Click", ResetSettingsToDefault)
 
-alwaysOnTopCheckbox := MyGui.Add("Checkbox", "x30 y145 vAlwaysOnTopToggle", "Always On Top")
+alwaysOnTopCheckbox := MyGui.Add("Checkbox", "x30 y145 vAlwaysOnTopToggle c" . colors.textColor, "Always On Top")
 alwaysOnTopCheckbox.Value := alwaysOnTopEnabled
 alwaysOnTopCheckbox.OnEvent("Click", UpdateAlwaysOnTop)
 
+darkModeCheckbox := MyGui.Add("Checkbox", "x150 y145 vDarkModeToggle c" . colors.textColor, "Dark Mode")
+darkModeCheckbox.Value := darkModeEnabled
+darkModeCheckbox.OnEvent("Click", UpdateDarkMode)
+
 TabCtrl.UseTab("  Instructions  ")
 
-MyGui.Add("Text", "x40 y60 w220 Center", "Join the Discord with the button below for instructions in the #instructions channel with a tutorial video and a written guide.")
+MyGui.Add("Text", "x40 y60 w220 Center c" . colors.textColor, "Join the Discord with the button below for instructions in the #instructions channel with a tutorial video and a written guide.")
 
-donationDropdown := MyGui.Add("DropDownList", "x151 y143 w58 Center vDonationAmount", ["10", "50", "100", "200", "500"])
+donationDropdown := MyGui.Add("DropDownList", "x151 y143 w58 Center vDonationAmount c" . colors.textColor . " Background" . colors.controlColor, ["10", "50", "100", "200", "500"])
 donationDropdown.OnEvent("Change", UpdateDonationAmount)
 
 for index, amount in ["10", "50", "100", "200", "500"] {
@@ -843,10 +1008,10 @@ for index, amount in ["10", "50", "100", "200", "500"] {
     }
 }
 
-DiscordBtn := MyGui.Add("Button", "x80 y120 w60 h45", "Discord")
-DonateBtn := MyGui.Add("Button", "x150 y120 w60 h23", "Donate")
+DiscordBtn := MyGui.Add("Button", "x80 y120 w60 h45 c" . colors.textColor . " Background" . colors.controlColor, "Discord")
+DonateBtn := MyGui.Add("Button", "x150 y120 w60 h23 c" . colors.textColor . " Background" . colors.controlColor, "Donate")
 
-MyGui.Add("Text", "x35 y190 w220 Center", "made by moris with help of adnrealan")
+MyGui.Add("Text", "x35 y190 w220 Center c" . colors.textColor, "made by moris with help of adnrealan")
 
 DonateBtn.OnEvent("Click", DonateClick)
 
@@ -913,6 +1078,7 @@ stableModeActive := false
 F1::
 {
     global scanning, followInterval, recoveryCycleEnabled, terrainColors, autoReconnectEnabled
+    global macroStartTime, webhookMessageId
 
     if (terrainColors.Count = 0) {
         MsgBox("Please add at least one custom terrain before starting the macro.")
@@ -945,6 +1111,9 @@ F1::
     
     scanning := !scanning
     if (scanning) {
+        webhookMessageId := ""
+        macroStartTime := A_TickCount
+        
         ToolTip("Scroll sequence completed - Starting color tracking", 10, 10)
         SetTimer(ScanForColor, followInterval)
         if (recoveryCycleEnabled) {
@@ -955,7 +1124,6 @@ F1::
 
         if (autoReconnectEnabled) {
             SetTimer(CheckAutoReconnect, 900000)
-            SendWebhook("Started with Auto Reconnect enabled")
         }
     } else {
         ToolTip("Color tracking stopped", 10, 10)
@@ -963,6 +1131,8 @@ F1::
         SetTimer(CheckPixelTimeout, 0)
         SetTimer(CheckAutoReconnect, 0)
         SetTimer(() => ToolTip(), -2000)
+
+        SendWebhook("Stopped")
     }
 }
 
@@ -1066,6 +1236,7 @@ ScanForColor() {
 CheckPixelTimeout() {
     global lastPixelFoundTime, scanning, recoveryActive, recoveryCycleEnabled
     global recoveryCycleCount, autoSellEnabled, lastAutoSellCycle, followInterval
+    global lastShovelFixCycle
     global scanLeft, scanTop, scanRight, scanBottom, targetColor, spinDelay
     global pixelFoundAfterRecovery, lastRecoveryTime, successfulCycles, unsuccessfulCycles
     global movementType, stableModeActive, clickColors, clickColorVariation, clickScanRadius
@@ -1103,7 +1274,7 @@ CheckPixelTimeout() {
         }
 
         if (Mod(recoveryCycleCount, 5) = 0) {
-            SendWebhook("Successful Cycles: " . successfulCycles . " | Unsuccessful Cycles: " . unsuccessfulCycles)
+            SendWebhook("Recovery Cycle #" . recoveryCycleCount)
         }
 
         lastRecoveryTime := currentTime
@@ -1115,6 +1286,16 @@ CheckPixelTimeout() {
             Sleep 4000
             
             ToolTip("Auto Sell completed - Starting recovery", 10, 70)
+            SetTimer(() => ToolTip(), -2000)
+        }
+
+        if (recoveryCycleEnabled && recoveryCycleCount >= lastShovelFixCycle + 12) {
+            ToolTip("Shovel Fix triggered - Pausing before recovery", 10, 70)
+            CheckShovelFix()
+
+	    Sleep 300
+            
+            ToolTip("Shovel Fix completed - Starting recovery", 10, 70)
             SetTimer(() => ToolTip(), -2000)
         }
 
