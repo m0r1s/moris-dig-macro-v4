@@ -1,3 +1,4 @@
+;why are you here?
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 #MaxThreadsPerHotkey 2
@@ -16,7 +17,7 @@ webhookURL := ""
 webhookMessageId := ""
 macroStartTime := 0
 uiNavigationKey := "\"
-movementType := "Fast Mode"
+movementType := "Stable Mode"
 donationAmount := "10"
 donationLinks := Map(
     "10", "https://www.roblox.com/catalog/13790965350/Donation-10",
@@ -201,7 +202,7 @@ CheckAutoReconnect() {
             }
 
             Sleep 300
-            Send "{4}"
+            Send "{2}"
             Sleep 300
             Send "{1}"
             Sleep 600
@@ -251,7 +252,7 @@ LoadSettings() {
     webhookURL := ""
     uiNavigationKey := "\"
     selectedResolution := "1920x1080"
-    movementType := "Fast Mode"
+    movementType := "Stable Mode"
     lastRecoveryTime := 0
     pixelFoundAfterRecovery := false
     successfulCycles := 0
@@ -446,8 +447,17 @@ UpdateCustomTerrainList() {
     customTerrainList.Delete()
     
     for terrainName, colors in terrainColors {
-        colorCode := colors.Length > 0 ? Format("0x{:06X}", colors[1]) : "No Color"
-        customTerrainList.Add([terrainName . " - " . colorCode])
+        if (colors.Length = 3) {
+            colorString := Format("0x{:06X}, 0x{:06X}, 0x{:06X}", colors[1], colors[2], colors[3])
+            displayText := terrainName . " - " . colorString
+            customTerrainList.Add([displayText])
+        } else if (colors.Length > 0) {
+            colorCode := Format("0x{:06X}", colors[1])
+            displayText := terrainName . " - " . colorCode . " (LEGACY " . colors.Length . " colors)"
+            customTerrainList.Add([displayText])
+        } else {
+            customTerrainList.Add([terrainName . " - No Colors"])
+        }
     }
 }
 
@@ -455,16 +465,31 @@ AddCustomTerrain(*) {
     global terrainColors, terrainDropdown, customNameEdit, customColorEdit
     
     terrainName := Trim(customNameEdit.Text)
-    colorHex := Trim(customColorEdit.Text)
+    colorInput := Trim(customColorEdit.Text)
     
-    if (terrainName = "" || colorHex = "") {
-        MsgBox("Please enter both terrain name and color value.")
+    if (terrainName = "" || colorInput = "") {
+        MsgBox("Please enter terrain name and all 3 color values.")
         return
     }
 
-    if (!RegExMatch(colorHex, "^0x[0-9A-Fa-f]{6}$")) {
-        MsgBox("Invalid color format. Please use format: 0xRRGGBB from F3")
+    colorStrings := StrSplit(colorInput, ",")
+
+    for index, colorStr in colorStrings {
+        colorStrings[index] := Trim(colorStr)
+    }
+
+    if (colorStrings.Length != 3) {
+        MsgBox("Please enter exactly 3 colors separated by commas.`nFormat: 0xRRGGBB, 0xRRGGBB, 0xRRGGBB")
         return
+    }
+
+    colors := []
+    for index, colorStr in colorStrings {
+        if (!RegExMatch(colorStr, "^0x[0-9A-Fa-f]{6}$")) {
+            MsgBox("Invalid format for Color " . index . ": " . colorStr . "`nPlease use format: 0xRRGGBB")
+            return
+        }
+        colors.Push(Integer(colorStr))
     }
 
     if (terrainColors.Has(terrainName)) {
@@ -474,8 +499,7 @@ AddCustomTerrain(*) {
         }
     }
 
-    colorValue := Integer(colorHex)
-    terrainColors[terrainName] := [colorValue]
+    terrainColors[terrainName] := colors
 
     terrainDropdown.Delete()
     terrainDropdown.Add(GetTerrainNames())
@@ -493,7 +517,7 @@ AddCustomTerrain(*) {
     customNameEdit.Text := ""
     customColorEdit.Text := ""
     
-    ToolTip("Custom terrain '" . terrainName . "' added successfully!", 0, -30)
+    ToolTip("Custom terrain '" . terrainName . "' added with 3 colors!", 0, -30)
     SetTimer(() => ToolTip(), -2000)
 }
 
@@ -812,7 +836,7 @@ CheckShovelFix() {
         ToolTip("Shovel Fix activated!", 10, 70)
 
         Sleep 300
-        Send "{4}"
+        Send "{2}"
         Sleep 300
         Send "{1}"
 
@@ -882,7 +906,7 @@ ApplyThemeToGui() {
 colors := GetThemeColors()
 
 guiOptions := alwaysOnTopEnabled ? "+AlwaysOnTop -Resize -MaximizeBox" : "-Resize -MaximizeBox"
-MyGui := Gui(guiOptions, "moris dig macro v4.5")
+MyGui := Gui(guiOptions, "moris dig macro v4.6")
 MyGui.MarginX := 10
 MyGui.MarginY := 10
 MyGui.BackColor := colors.bgColor
@@ -904,10 +928,10 @@ MyGui.Add("Text", "x30 y95 c" . colors.textColor, "Webhook URL:")
 webhookEdit := MyGui.Add("Edit", "x30 y115 w100 r1 vWebhookURL c" . colors.textColor . " Background" . colors.controlColor, webhookURL)
 
 MyGui.Add("Text", "x168 y45 c" . colors.textColor, "Movement Type:")
-movementTypeDropdown := MyGui.Add("DropDownList", "x168 y65 w100 vMovementType c" . colors.textColor . " Background" . colors.controlColor, ["Fast Mode", "Stable Mode"])
+movementTypeDropdown := MyGui.Add("DropDownList", "x168 y65 w100 vMovementType c" . colors.textColor . " Background" . colors.controlColor, ["Risk Mode", "Stable Mode"])
 movementTypeDropdown.OnEvent("Change", UpdateMovementType)
 
-for index, movement in ["Fast Mode", "Stable Mode"] {
+for index, movement in ["Risk Mode", "Stable Mode"] {
     if (movement = movementType) {
         movementTypeDropdown.Value := index
         break
@@ -945,13 +969,13 @@ TabCtrl.UseTab(" Create Terrain ")
 MyGui.Add("Text", "x30 y45 w220 c" . colors.textColor, "Terrain Name:")
 customNameEdit := MyGui.Add("Edit", "x30 y65 w100 c" . colors.textColor . " Background" . colors.controlColor)
 
-MyGui.Add("Text", "x30 y95 w220 c" . colors.textColor, "Color (0xRRGGBB):")
+MyGui.Add("Text", "x30 y95 w220 c" . colors.textColor, "Colors (3 required):")
 customColorEdit := MyGui.Add("Edit", "x30 y115 w100 c" . colors.textColor . " Background" . colors.controlColor)
 
 MyGui.Add("Button", "x30 y154 w100 h20 c" . colors.textColor . " Background" . colors.controlColor, "Add Terrain").OnEvent("Click", AddCustomTerrain)
 MyGui.Add("Button", "x30 y193 w100 h20 c" . colors.textColor . " Background" . colors.controlColor, "Delete Terrain").OnEvent("Click", DeleteCustomTerrain)
 
-MyGui.Add("Text", "x145 y45 w220 c" . colors.textColor, "Existing Terrains:")
+MyGui.Add("Text", "x145 y45 w120 c" . colors.textColor, "Existing Terrains:")
 customTerrainList := MyGui.Add("ListBox", "x145 y65 w120 h159 vCustomTerrainList c" . colors.textColor . " Background" . colors.controlColor)
 UpdateCustomTerrainList()
 
@@ -1102,7 +1126,7 @@ F1::
         }
 
         Sleep 300
-        Send "{4}"
+        Send "{2}"
         Sleep 300
         Send "{1}"
         Sleep 600
@@ -1123,7 +1147,7 @@ F1::
         SendWebhook("Started")
 
         if (autoReconnectEnabled) {
-            SetTimer(CheckAutoReconnect, 900000)
+            SetTimer(CheckAutoReconnect, 45000)
         }
     } else {
         ToolTip("Color tracking stopped", 10, 10)
@@ -1148,16 +1172,91 @@ F2::
 F3:: {
     try {
         MouseGetPos(&mouseX, &mouseY)
-        pixelColor := PixelGetColor(mouseX, mouseY)
-        A_Clipboard := pixelColor
+
+        colorMap := Map()
+        scanRadius := 5
+
+        Loop (scanRadius * 2 + 1) {
+            x := mouseX - scanRadius + A_Index - 1
+            Loop (scanRadius * 2 + 1) {
+                y := mouseY - scanRadius + A_Index - 1
+
+                distance := Sqrt((x - mouseX)**2 + (y - mouseY)**2)
+                if (distance <= scanRadius) {
+                    try {
+                        pixelColor := PixelGetColor(x, y)
+
+                        if (colorMap.Has(pixelColor)) {
+                            colorMap[pixelColor] := colorMap[pixelColor] + 1
+                        } else {
+                            colorMap[pixelColor] := 1
+                        }
+                    } catch {
+                        continue
+                    }
+                }
+            }
+        }
+
+        colorArray := []
+        for color, count in colorMap {
+            red := (color >> 16) & 0xFF
+            green := (color >> 8) & 0xFF
+            blue := color & 0xFF
+
+            luminance := (0.299 * red + 0.587 * green + 0.114 * blue)
+            
+            colorArray.Push({
+                color: color,
+                count: count,
+                luminance: luminance
+            })
+        }
+
+        colorArray := SortColorsByDarkness(colorArray)
+
+        topColors := []
+        maxColors := Min(3, colorArray.Length)
+        
+        Loop maxColors {
+            topColors.Push(colorArray[A_Index].color)
+        }
+
+        colorString := ""
+        for index, color in topColors {
+            if (index > 1) {
+                colorString .= ", "
+            }
+            colorString .= Format("0x{:06X}", color)
+        }
+        
+        A_Clipboard := colorString
         
         TabCtrl.Value := 2 
 
-        customColorEdit.Text := pixelColor
+        finalColorString := ""
 
-        SetTimer () => TrayTip(), -2000
+        if (topColors.Length >= 3) {
+            finalColorString := Format("0x{:06X}, 0x{:06X}, 0x{:06X}", topColors[1], topColors[2], topColors[3])
+        } else if (topColors.Length = 2) {
+            finalColorString := Format("0x{:06X}, 0x{:06X}, 0x{:06X}", topColors[1], topColors[2], topColors[2])
+        } else if (topColors.Length = 1) {
+            finalColorString := Format("0x{:06X}, 0x{:06X}, 0x{:06X}", topColors[1], topColors[1], topColors[1])
+        }
+        
+        customColorEdit.Text := finalColorString
+
+        tooltipText := "Top " . topColors.Length . " darkest colors found:`n"
+        for index, color in topColors {
+            tooltipText .= index . ": " . Format("0x{:06X}", color) . "`n"
+        }
+        tooltipText .= "Filled into single field with comma separation!"
+        
+        ToolTip(tooltipText, mouseX + 20, mouseY + 20)
+        SetTimer(() => ToolTip(), -4000)
+        
     } catch as err {
-        MsgBox "Error getting color: " err.Message
+        MsgBox("Error getting colors: " . err.Message)
     }
 }
 
@@ -1309,7 +1408,7 @@ CheckPixelTimeout() {
         Click "Left"
         Sleep spinDelay
 
-        if (movementType = "Fast Mode") {
+        if (movementType = "Risk Mode") {
             SmoothMoveRight()
         } else if (movementType = "Stable Mode") {
             StableModeRecovery()
@@ -1334,9 +1433,6 @@ StableModeRecovery() {
     
     stableModeActive := true
 
-    Send "{4}"
-    Sleep 300
-    Send "{1}"
     Sleep 300
     Send "{Right down}"
 
@@ -1499,4 +1595,29 @@ ForceFullscreenMode() {
         ToolTip("Roblox window not found - Please ensure Roblox is running", 0, -30)
         SetTimer(() => ToolTip(), -3000)
     }
+}
+
+SortColorsByDarkness(colorArray) {
+    n := colorArray.Length
+    
+    Loop n - 1 {
+        i := A_Index
+        Loop n - i {
+            j := A_Index
+
+            if (colorArray[j].luminance > colorArray[j + 1].luminance) {
+                temp := colorArray[j]
+                colorArray[j] := colorArray[j + 1]
+                colorArray[j + 1] := temp
+            }
+            else if (colorArray[j].luminance = colorArray[j + 1].luminance && 
+                     colorArray[j].count < colorArray[j + 1].count) {
+                temp := colorArray[j]
+                colorArray[j] := colorArray[j + 1]
+                colorArray[j + 1] := temp
+            }
+        }
+    }
+    
+    return colorArray
 }
